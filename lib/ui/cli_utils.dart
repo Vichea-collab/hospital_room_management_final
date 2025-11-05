@@ -1,4 +1,3 @@
-// Small reusable CLI utilities: prompting, confirmation, and simple colors
 import 'dart:io';
 
 String _esc(String code) => '\x1B[$code';

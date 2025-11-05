@@ -1,4 +1,3 @@
-// AI generated
 import '../models/department.dart';
 import '../models/room.dart';
 import '../models/bed.dart';
@@ -19,6 +18,9 @@ class RoomManagementService {
 
   RoomManagementService(this._repo, this._historyRepo);
 
+  // =========================================================
+  // ================= LOAD & SAVE ===========================
+  // =========================================================
   Future<void> load() async {
     _departments
       ..clear()
@@ -29,21 +31,28 @@ class RoomManagementService {
     await _repo.saveDepartments(_departments);
   }
 
+  // =========================================================
+  // ================= ADD ENTITIES ==========================
+  // =========================================================
   void addDepartment(Department dept) {
     if (_departments.any((d) => d.departmentID == dept.departmentID)) return;
     _departments.add(dept);
   }
 
   void addRoom(Room room, {required String departmentID}) {
-    final dept = _departments.firstWhere((d) => d.departmentID == departmentID,
-        orElse: () => throw StateError('Department not found'));
+    final dept = _departments.firstWhere(
+      (d) => d.departmentID == departmentID,
+      orElse: () => throw StateError('Department not found'),
+    );
     dept.addRoom(room);
   }
 
   void addStaff(Staff staff, {String? departmentID}) {
     if (departmentID == null) return;
-    final dept = _departments.firstWhere((d) => d.departmentID == departmentID,
-        orElse: () => throw StateError('Department not found'));
+    final dept = _departments.firstWhere(
+      (d) => d.departmentID == departmentID,
+      orElse: () => throw StateError('Department not found'),
+    );
     dept.addStaff(staff);
   }
 
@@ -51,11 +60,15 @@ class RoomManagementService {
     room.assignStaff(staff);
   }
 
+  // =========================================================
+  // ================= PATIENT / BED OPS =====================
+  // =========================================================
   Future<RoomAssignment> assignPatientToBed(
       Patient patient, Bed bed, DateTime start) async {
     if (bed.status != BedStatus.available) {
       throw StateError('Bed not available');
     }
+
     bed.assignPatient(patient, start);
     final ra = RoomAssignment(
       assignmentID: 'A-${DateTime.now().millisecondsSinceEpoch}',
@@ -66,9 +79,7 @@ class RoomManagementService {
     );
     _assignments.add(ra);
 
-    // Record admission in history
     await _recordAdmission(patient, bed, start);
-
     return ra;
   }
 
@@ -82,12 +93,14 @@ class RoomManagementService {
       a.endAssignment(end);
     }
 
-    // Record release in history if there was a patient
     if (patient != null) {
       await _recordRelease(patient, bed, end);
     }
   }
 
+  // =========================================================
+  // ================== HISTORY RECORDING ====================
+  // =========================================================
   Future<void> _recordAdmission(
       Patient patient, Bed bed, DateTime admissionDate) async {
     final room = _findRoomByBed(bed);
@@ -129,6 +142,76 @@ class RoomManagementService {
     }
   }
 
+  // =========================================================
+  // ================= ROOM MAINTENANCE OPS ==================
+  // =========================================================
+  void markRoomUnderMaintenance(Room room, String reason, Staff? by) {
+    room.status = RoomStatus.maintenance;
+
+    _maintenance.add(MaintenanceRecord(
+      recordID: 'M-${DateTime.now().millisecondsSinceEpoch}',
+      room: room,
+      staff: by,
+      reason: reason,
+      date: DateTime.now(),
+    ));
+  }
+
+  //mark room cleaning
+  void markRoomClean(Room room, DateTime date) {
+    // Cleaning process finished, mark as cleaning first
+    room.status = RoomStatus.cleaning;
+
+    // Mark all unoccupied beds as cleaning
+    for (final bed in room.beds) {
+      if (bed.status != BedStatus.occupied) {
+        bed.status = BedStatus.cleaning;
+      }
+    }
+  }
+
+  void markRoomClosed(Room room) {
+    room.status = RoomStatus.closed;
+
+    //Mark all beds as closed
+    for (final bed in room.beds) {
+      if (bed.status != BedStatus.occupied) {
+        bed.status = BedStatus.closed;
+      }
+    }
+  }
+
+  void markRoomAvailable(Room room) {
+    room.status = RoomStatus.available;
+
+    // Restore all beds from cleaning → available
+    for (final bed in room.beds) {
+      if (bed.status == BedStatus.cleaning) {
+        bed.status = BedStatus.available;
+      }
+    }
+
+    // Remove maintenance records for that room (resolved)
+    _maintenance.removeWhere((m) => m.room.roomID == room.roomID);
+  }
+
+  // =========================================================
+  // ==================== ROOM QUERIES =======================
+  // =========================================================
+  List<Room> getAvailableRooms() => _departments
+      .expand((d) => d.rooms)
+      .where((r) => r.isAvailable())
+      .toList();
+
+  List<Bed> getOccupiedBeds() => _departments
+      .expand((d) => d.rooms)
+      .expand((r) => r.beds)
+      .where((b) => b.status == BedStatus.occupied)
+      .toList();
+
+  // =========================================================
+  // ================= INTERNAL HELPERS ======================
+  // =========================================================
   Department? _findDepartmentByBed(Bed bed) {
     for (final dept in _departments) {
       for (final room in dept.rooms) {
@@ -151,35 +234,9 @@ class RoomManagementService {
     return null;
   }
 
-  void markRoomUnderMaintenance(Room room, String reason, Staff? by) {
-    room.status = RoomStatus.maintenance;
-    if (by != null) {
-      _maintenance.add(MaintenanceRecord(
-        recordID: 'M-${DateTime.now().millisecondsSinceEpoch}',
-        room: room,
-        staff: by,
-        reason: reason,
-        date: DateTime.now(),
-      ));
-    }
-  }
-
-  void markRoomCleaned(Room room, DateTime date) {
-    room.status = RoomStatus.cleaning;
-    room.markCleaned();
-  }
-
-  List<Room> getAvailableRooms() => _departments
-      .expand((d) => d.rooms)
-      .where((r) => r.isAvailable())
-      .toList();
-
-  List<Bed> getOccupiedBeds() => _departments
-      .expand((d) => d.rooms)
-      .expand((r) => r.beds)
-      .where((b) => b.status == BedStatus.occupied)
-      .toList();
-
+  // =========================================================
+  // ================= PUBLIC GETTERS ========================
+  // =========================================================
   List<Department> get departments => List.unmodifiable(_departments);
   List<RoomAssignment> get assignments => List.unmodifiable(_assignments);
   List<MaintenanceRecord> get maintenance => List.unmodifiable(_maintenance);

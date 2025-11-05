@@ -23,7 +23,7 @@ class MainMenu {
       stdout.writeln('[1] Insert');
       stdout.writeln('[2] Assignment');
       stdout.writeln('[3] Release Bed');
-      stdout.writeln('[4] Maintenance');
+      stdout.writeln('[4] Mark Room');
       stdout.writeln('[5] View');
       stdout.writeln('[6] View JSON Data');
       stdout.writeln('[7] History');
@@ -118,9 +118,12 @@ class MainMenu {
   Future<void> _menuMaintenance() async {
     while (true) {
       ui.clearScreen();
-      _section('Maintenance');
+      _section('Mark Room');
       stdout.writeln('[1] Mark Room Under Maintenance');
       stdout.writeln('[2] Mark Room Cleaned');
+      stdout.writeln('[3] Mark Room Closed');
+      stdout.writeln('[4] Mark Room Available');
+      stdout.writeln('[5] View All Rooms (Color-coded)');
       stdout.writeln('[0] Back');
       final c = _askInt('Choose');
       switch (c) {
@@ -128,7 +131,17 @@ class MainMenu {
           await _markRoomUnderMaintenance();
           break;
         case 2:
-          await _markRoomCleaned();
+          await _markRoomClean();
+          break;
+        case 3:
+          await _markRoomClosed();
+          break;
+        case 4:
+          await _markRoomAvailable();
+          break;
+        case 5:
+          _viewAllRoomsColor();
+          _pause();
           break;
         case 0:
           return;
@@ -175,7 +188,7 @@ class MainMenu {
     }
   }
 
-    Future<void> _addDepartment() async {
+  Future<void> _addDepartment() async {
     _section('Add Department');
     while (true) {
       final id = _askStr('Department ID');
@@ -278,7 +291,6 @@ class MainMenu {
     }
     _pause();
   }
-
 
   Future<void> _assignStaffToRoom() async {
     _section('Assign Staff to Room');
@@ -451,7 +463,7 @@ class MainMenu {
     _pause();
   }
 
-  Future<void> _markRoomCleaned() async {
+  Future<void> _markRoomClean() async {
     _section('Mark Room Cleaned');
     final roomID = _askStr('Room ID');
     final room = _findRoomById(roomID);
@@ -460,9 +472,58 @@ class MainMenu {
       _pause();
       return;
     }
-    service.markRoomCleaned(room, DateTime.now());
+
+    // Check if room is in a state that can be cleaned
+    if (room.status == RoomStatus.occupied) {
+      _error('Cannot clean room while it is occupied');
+      _pause();
+      return;
+    }
+
+    // Mark room for cleaning
+    service.markRoomClean(room, DateTime.now());
     await service.save();
-    _ok('Room cleaned and set to available');
+
+    stdout.writeln('\nRoom Status Update:');
+    stdout.writeln('- Room Status: ${_stateBadgeRoom(room.status)}');
+    stdout.writeln(
+        '- Beds under cleaning: ${room.beds.where((b) => b.status == BedStatus.cleaning).length}');
+    stdout.writeln(
+        '- Occupied beds (unchanged): ${room.beds.where((b) => b.status == BedStatus.occupied).length}');
+    stdout.writeln(
+        '\n${ui.yellow('Note:')} Once cleaning is complete, use "Mark Room Available" to restore service.');
+
+    _ok('Room marked for cleaning');
+    _pause();
+  }
+
+  Future<void> _markRoomAvailable() async {
+    _section('Mark Room Available');
+    final roomID = _askStr('Room ID');
+    final room = _findRoomById(roomID);
+    if (room == null) {
+      _error('Room not found');
+      _pause();
+      return;
+    }
+    service.markRoomAvailable(room);
+    await service.save();
+    _ok('Room marked as available');
+    _pause();
+  }
+
+  Future<void> _markRoomClosed() async {
+    _section('Mark Room Closed');
+    final roomID = _askStr('Room ID');
+    final room = _findRoomById(roomID);
+    if (room == null) {
+      _error('Room not found');
+      _pause();
+      return;
+    }
+    service.markRoomClosed(room);
+    await service.save();
+    _ok('Room marked as closed');
     _pause();
   }
 
@@ -697,6 +758,8 @@ class MainMenu {
         return ui.yellow('[Reserved]');
       case BedStatus.cleaning:
         return ui.blue('[Cleaning]');
+      case BedStatus.closed:
+        return '[Closed]';
     }
   }
 

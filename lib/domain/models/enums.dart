@@ -1,7 +1,7 @@
 enum StaffRole { nurse, doctor, janitor, maintenance, cleaner, technician }
 enum RoomType { icu, surgery, maternity, isolation, general }
 enum RoomStatus { available, occupied, maintenance, cleaning, closed }
-enum BedStatus { available, occupied, reserved, cleaning }
+enum BedStatus { available, occupied, reserved, cleaning, closed }
 
 T? _byNameOrNull<T extends Enum>(List<T> values, String? name) {
   if (name == null) return null;
