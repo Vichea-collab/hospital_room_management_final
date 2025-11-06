@@ -1,3 +1,4 @@
+// AI generated
 import 'dart:io';
 import 'package:hospital_room_management/ui/cli_utils.dart' as ui;
 import '../data/history_repository.dart';
@@ -20,7 +21,7 @@ class MainMenu {
     while (true) {
       ui.clearScreen();
       _banner();
-      stdout.writeln('[1] Insert');
+      stdout.writeln('[1] Manage');
       stdout.writeln('[2] Assignment');
       stdout.writeln('[3] Release Bed');
       stdout.writeln('[4] Mark Room');
@@ -32,7 +33,7 @@ class MainMenu {
       final choice = _askInt('Choose an option');
       switch (choice) {
         case 1:
-          await _menuInsert();
+          await _menuManage();
           break;
         case 2:
           await _menuAssignment();
@@ -63,7 +64,35 @@ class MainMenu {
     }
   }
 
-  Future<void> _menuInsert() async {
+  Future<void> _menuManage() async {
+    while (true) {
+      ui.clearScreen();
+      _section('Manage');
+      stdout.writeln('[1] Insert');
+      stdout.writeln('[2] Delete');
+      stdout.writeln('[3] Update');
+      stdout.writeln('[0] Back');
+      final c = _askInt('Choose');
+      switch (c) {
+        case 1:
+          await _menuInsertEntities();
+          break;
+        case 2:
+          await _menuDeleteEntities();
+          break;
+        case 3:
+          await _menuUpdateEntities();
+          break;
+        case 0:
+          return;
+        default:
+          _error('Invalid option');
+          _pause();
+      }
+    }
+  }
+
+  Future<void> _menuInsertEntities() async {
     while (true) {
       ui.clearScreen();
       _section('Insert');
@@ -81,6 +110,62 @@ class MainMenu {
           break;
         case 3:
           await _addStaff();
+          break;
+        case 0:
+          return;
+        default:
+          _error('Invalid option');
+          _pause();
+      }
+    }
+  }
+
+  Future<void> _menuDeleteEntities() async {
+    while (true) {
+      ui.clearScreen();
+      _section('Delete');
+      stdout.writeln('[1] Delete Department');
+      stdout.writeln('[2] Delete Room');
+      stdout.writeln('[3] Delete Staff');
+      stdout.writeln('[0] Back');
+      final c = _askInt('Choose');
+      switch (c) {
+        case 1:
+          await _deleteDepartment();
+          break;
+        case 2:
+          await _deleteRoom();
+          break;
+        case 3:
+          await _deleteStaff();
+          break;
+        case 0:
+          return;
+        default:
+          _error('Invalid option');
+          _pause();
+      }
+    }
+  }
+
+  Future<void> _menuUpdateEntities() async {
+    while (true) {
+      ui.clearScreen();
+      _section('Update');
+      stdout.writeln('[1] Update Department');
+      stdout.writeln('[2] Update Room');
+      stdout.writeln('[3] Update Staff');
+      stdout.writeln('[0] Back');
+      final c = _askInt('Choose');
+      switch (c) {
+        case 1:
+          await _updateDepartment();
+          break;
+        case 2:
+          await _updateRoom();
+          break;
+        case 3:
+          await _updateStaff();
           break;
         case 0:
           return;
@@ -307,6 +392,266 @@ class MainMenu {
       } catch (e) {
         _error('Error adding staff: ${e.toString()}');
       }
+    }
+    _pause();
+  }
+
+  Future<void> _deleteDepartment() async {
+    _section('Delete Department');
+    final id = _askStr('Department ID');
+    final dept = _findDepartmentById(id);
+    if (dept == null) {
+      _error('Department not found.');
+      _pause();
+      return;
+    }
+    if (dept.rooms.isNotEmpty || dept.staff.isNotEmpty) {
+      _error('Department must have no rooms and no staff before deletion.');
+      _pause();
+      return;
+    }
+
+    if (!ui.confirm(
+        'Delete department "${dept.name}" (ID: ${dept.departmentID})?')) {
+      _info('Department deletion canceled.');
+      _pause();
+      return;
+    }
+
+    try {
+      final removed = service.removeDepartment(id);
+      if (!removed) {
+        _error('Unable to delete department.');
+      } else {
+        await service.save();
+        _ok('Department deleted successfully.');
+      }
+    } catch (e) {
+      _error('Error deleting department: ${e.toString()}');
+    }
+    _pause();
+  }
+
+  Future<void> _deleteRoom() async {
+    _section('Delete Room');
+    final roomID = _askStr('Room ID');
+    final room = _findRoomById(roomID);
+    if (room == null) {
+      _error('Room not found.');
+      _pause();
+      return;
+    }
+    if (room.beds.any((bed) => bed.status == BedStatus.occupied)) {
+      _error('Room has occupied beds. Release them before deletion.');
+      _pause();
+      return;
+    }
+    final dept = _findDepartmentByRoomId(roomID);
+    final deptLabel = dept == null
+        ? 'department'
+        : 'department ${dept.name} (ID: ${dept.departmentID})';
+
+    if (!ui.confirm(
+        'Delete room ${room.roomNumber} (ID: ${room.roomID}) from $deptLabel?')) {
+      _info('Room deletion canceled.');
+      _pause();
+      return;
+    }
+
+    try {
+      final removed = service.removeRoom(roomID);
+      if (!removed) {
+        _error('Unable to delete room.');
+      } else {
+        await service.save();
+        _ok('Room deleted successfully.');
+      }
+    } catch (e) {
+      _error('Error deleting room: ${e.toString()}');
+    }
+    _pause();
+  }
+
+  Future<void> _deleteStaff() async {
+    _section('Delete Staff');
+    final staffID = _askStr('Staff ID');
+    final staff = _findStaffById(staffID);
+    if (staff == null) {
+      _error('Staff not found.');
+      _pause();
+      return;
+    }
+    final dept = _findDepartmentByStaffId(staffID);
+    final deptLabel = dept == null
+        ? 'department'
+        : 'department ${dept.name} (ID: ${dept.departmentID})';
+    if (!ui.confirm(
+        'Delete staff ${staff.name} (${staff.staffID}) from $deptLabel?')) {
+      _info('Staff deletion canceled.');
+      _pause();
+      return;
+    }
+    try {
+      final removed = service.removeStaff(staffID);
+      if (!removed) {
+        _error('Unable to delete staff.');
+      } else {
+        await service.save();
+        _ok('Staff deleted successfully.');
+      }
+    } catch (e) {
+      _error('Error deleting staff: ${e.toString()}');
+    }
+    _pause();
+  }
+
+  Future<void> _updateDepartment() async {
+    _section('Update Department');
+    final id = _askStr('Department ID');
+    final dept = _findDepartmentById(id);
+    if (dept == null) {
+      _error('Department not found.');
+      _pause();
+      return;
+    }
+
+    stdout.writeln('Current Name: ${dept.name}');
+    stdout.writeln('Current Description: ${dept.description}');
+    final newName = _askOptionalStr('New Name');
+    final newDesc = _askOptionalStr('New Description');
+
+    if (newName == null && newDesc == null) {
+      _info('No changes entered.');
+      _pause();
+      return;
+    }
+
+    if (!ui.confirm('Apply the updates to department ${dept.departmentID}?')) {
+      _info('Department update canceled.');
+      _pause();
+      return;
+    }
+
+    final updated = service.updateDepartment(
+      id,
+      name: newName,
+      description: newDesc,
+    );
+    if (!updated) {
+      _error('No changes were applied.');
+    } else {
+      await service.save();
+      _ok('Department updated successfully.');
+    }
+    _pause();
+  }
+
+  Future<void> _updateRoom() async {
+    _section('Update Room');
+    final roomID = _askStr('Room ID');
+    final room = _findRoomById(roomID);
+    if (room == null) {
+      _error('Room not found.');
+      _pause();
+      return;
+    }
+    final dept = _findDepartmentByRoomId(roomID);
+    if (dept != null) {
+      stdout.writeln('Department: ${dept.name} (${dept.departmentID})');
+    }
+    stdout.writeln('Current Number: ${room.roomNumber}');
+    stdout.writeln('Current Floor: ${room.floorLevel}');
+    stdout.writeln('Current Type: ${room.type.name}');
+    stdout.writeln('Current Capacity: ${room.capacity}');
+
+    final newNumber = _askOptionalStr('New Room Number');
+    final newFloor = _askOptionalStr('New Floor Level');
+    final newType = _askOptionalRoomType(room.type);
+    final newCapacity = _askOptionalInt('New Capacity');
+
+    if (newNumber == null &&
+        newFloor == null &&
+        newType == null &&
+        newCapacity == null) {
+      _info('No changes entered.');
+      _pause();
+      return;
+    }
+
+    if (!ui.confirm('Apply the updates to room ${room.roomID}?')) {
+      _info('Room update canceled.');
+      _pause();
+      return;
+    }
+
+    bool updated;
+    try {
+      updated = service.updateRoom(
+        roomID,
+        roomNumber: newNumber,
+        floorLevel: newFloor,
+        type: newType,
+        capacity: newCapacity,
+      );
+    } on StateError catch (e) {
+      _error(e.message);
+      _pause();
+      return;
+    }
+
+    if (!updated) {
+      _error('No changes were applied.');
+    } else {
+      await service.save();
+      _ok('Room updated successfully.');
+    }
+    _pause();
+  }
+
+  Future<void> _updateStaff() async {
+    _section('Update Staff');
+    final staffID = _askStr('Staff ID');
+    final staff = _findStaffById(staffID);
+    if (staff == null) {
+      _error('Staff not found.');
+      _pause();
+      return;
+    }
+    final dept = _findDepartmentByStaffId(staffID);
+    if (dept != null) {
+      stdout.writeln('Department: ${dept.name} (${dept.departmentID})');
+    }
+    stdout.writeln('Current Name: ${staff.name}');
+    stdout.writeln('Current Role: ${staff.role.name}');
+    stdout.writeln('Current Phone: ${staff.phoneNumber}');
+
+    final newName = _askOptionalStr('New Name');
+    final newRole = _askOptionalStaffRole(staff.role);
+    final newPhone = _askOptionalStr('New Phone Number');
+
+    if (newName == null && newRole == null && newPhone == null) {
+      _info('No changes entered.');
+      _pause();
+      return;
+    }
+
+    if (!ui.confirm('Apply the updates to staff ${staff.staffID}?')) {
+      _info('Staff update canceled.');
+      _pause();
+      return;
+    }
+
+    final updated = service.updateStaff(
+      staffID,
+      name: newName,
+      role: newRole,
+      phoneNumber: newPhone,
+    );
+    if (!updated) {
+      _error('No changes were applied.');
+    } else {
+      await service.save();
+      _ok('Staff updated successfully.');
     }
     _pause();
   }
@@ -709,6 +1054,28 @@ class MainMenu {
     }
   }
 
+  String? _askOptionalStr(String label) {
+    stdout.write('$label (leave blank to keep current): ');
+    final input = stdin.readLineSync();
+    if (input == null) return null;
+    final trimmed = input.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  int? _askOptionalInt(String label) {
+    while (true) {
+      stdout.write('$label (leave blank to keep current): ');
+      final input = stdin.readLineSync();
+      if (input == null || input.trim().isEmpty) return null;
+      final value = int.tryParse(input.trim());
+      if (value == null) {
+        _error('Invalid number');
+        continue;
+      }
+      return value;
+    }
+  }
+
   RoomType _askRoomType() {
     stdout.writeln(
         'RoomType: 1) ICU  2) Surgery  3) Maternity  4) Isolation  5) General');
@@ -724,6 +1091,31 @@ class MainMenu {
         return RoomType.isolation;
       default:
         return RoomType.general;
+    }
+  }
+
+  RoomType? _askOptionalRoomType(RoomType current) {
+    while (true) {
+      stdout.writeln(
+          'RoomType (current: ${current.name}): 1) ICU  2) Surgery  3) Maternity  4) Isolation  5) General');
+      stdout.write('Choose (Enter to keep current): ');
+      final input = stdin.readLineSync();
+      if (input == null || input.trim().isEmpty) return null;
+      final v = int.tryParse(input.trim());
+      switch (v) {
+        case 1:
+          return RoomType.icu;
+        case 2:
+          return RoomType.surgery;
+        case 3:
+          return RoomType.maternity;
+        case 4:
+          return RoomType.isolation;
+        case 5:
+          return RoomType.general;
+        default:
+          _error('Invalid option');
+      }
     }
   }
 
@@ -749,9 +1141,54 @@ class MainMenu {
     }
   }
 
+  StaffRole? _askOptionalStaffRole(StaffRole current) {
+    while (true) {
+      stdout.writeln(
+          'StaffRole (current: ${current.name}): 1) Nurse  2) Doctor  3) Janitor  4) Maintenance  5) Cleaner  6) Technician');
+      stdout.write('Choose (Enter to keep current): ');
+      final input = stdin.readLineSync();
+      if (input == null || input.trim().isEmpty) return null;
+      final v = int.tryParse(input.trim());
+      switch (v) {
+        case 1:
+          return StaffRole.nurse;
+        case 2:
+          return StaffRole.doctor;
+        case 3:
+          return StaffRole.janitor;
+        case 4:
+          return StaffRole.maintenance;
+        case 5:
+          return StaffRole.cleaner;
+        case 6:
+          return StaffRole.technician;
+        default:
+          _error('Invalid option');
+      }
+    }
+  }
+
   Department? _findDepartmentById(String id) {
     for (final d in service.departments) {
       if (d.departmentID == id) return d;
+    }
+    return null;
+  }
+
+  Department? _findDepartmentByRoomId(String roomID) {
+    for (final d in service.departments) {
+      if (d.rooms.any((room) => room.roomID == roomID)) {
+        return d;
+      }
+    }
+    return null;
+  }
+
+  Department? _findDepartmentByStaffId(String staffID) {
+    for (final d in service.departments) {
+      if (d.staff.any((staff) => staff.staffID == staffID)) {
+        return d;
+      }
     }
     return null;
   }

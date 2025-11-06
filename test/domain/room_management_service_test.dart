@@ -125,4 +125,124 @@ void main() {
     expect(room.maintenanceStaffId, isNull);
     expect(room.maintenanceLoggedAt, isNull);
   });
+
+  test('removeDepartment enforces empty departments before deletion', () async {
+    expect(
+      () => service.removeDepartment(department.departmentID),
+      throwsA(isA<StateError>()),
+    );
+
+    final removedRoom = service.removeRoom(room.roomID);
+    expect(removedRoom, isTrue);
+
+    final removedDept = service.removeDepartment(department.departmentID);
+    expect(removedDept, isTrue);
+    expect(service.departments, isEmpty);
+  });
+
+  test('removeRoom clears maintenance records and assignments', () async {
+    final patient = Patient(
+      patientID: 'P2',
+      firstName: 'Dara',
+      lastName: 'Lee',
+      gender: 'M',
+      dateOfBirth: DateTime(1995, 5, 5),
+      phoneNumber: '010000000',
+    );
+
+    final start = DateTime.utc(2024, 2, 1, 9);
+    await service.assignPatientToBed(patient, bed, start);
+    await service.releaseBed(bed, start.add(const Duration(hours: 8)));
+
+    service.markRoomUnderMaintenance(room, 'Deep clean', null);
+
+    final removed = service.removeRoom(room.roomID);
+    expect(removed, isTrue);
+    expect(department.rooms, isEmpty);
+    expect(service.assignments, isEmpty);
+    expect(service.maintenance, isEmpty);
+  });
+
+  test('removeRoom throws when beds are still occupied', () async {
+    final patient = Patient(
+      patientID: 'P3',
+      firstName: 'Vanna',
+      lastName: 'Im',
+      gender: 'F',
+      dateOfBirth: DateTime(1990, 3, 2),
+      phoneNumber: '087777777',
+    );
+
+    await service.assignPatientToBed(patient, bed, DateTime.now());
+
+    expect(
+      () => service.removeRoom(room.roomID),
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  test('removeStaff detaches staff from department and rooms', () {
+    final staff = Staff(
+      staffID: 'S2',
+      name: 'Nurse Kim',
+      role: StaffRole.nurse,
+      phoneNumber: '099999999',
+    );
+
+    service.addStaff(staff, departmentID: department.departmentID);
+    service.assignStaffToRoom(staff, room);
+
+    final removed = service.removeStaff(staff.staffID);
+    expect(removed, isTrue);
+    expect(department.staff, isEmpty);
+    expect(room.assignedStaff, isEmpty);
+  });
+
+  test('updateDepartment applies new name and description', () {
+    final updated = service.updateDepartment(
+      department.departmentID,
+      name: 'Updated ICU',
+      description: 'Updated description',
+    );
+
+    expect(updated, isTrue);
+    expect(department.name, equals('Updated ICU'));
+    expect(department.description, equals('Updated description'));
+  });
+
+  test('updateRoom applies room metadata changes', () {
+    final updated = service.updateRoom(
+      room.roomID,
+      roomNumber: '202',
+      floorLevel: '2',
+      type: RoomType.general,
+    );
+
+    expect(updated, isTrue);
+    expect(room.roomNumber, equals('202'));
+    expect(room.floorLevel, equals('2'));
+    expect(room.type, equals(RoomType.general));
+  });
+
+  test('updateStaff applies staff info changes', () {
+    final staff = Staff(
+      staffID: 'S3',
+      name: 'Doctor Heng',
+      role: StaffRole.doctor,
+      phoneNumber: '088888888',
+    );
+    service.addStaff(staff, departmentID: department.departmentID);
+
+    final updated = service.updateStaff(
+      staff.staffID,
+      name: 'Doctor Heng Updated',
+      role: StaffRole.technician,
+      phoneNumber: '081111111',
+    );
+
+    expect(updated, isTrue);
+    expect(staff.name, equals('Doctor Heng Updated'));
+    expect(staff.role, equals(StaffRole.technician));
+    expect(staff.phoneNumber, equals('081111111'));
+  });
 }

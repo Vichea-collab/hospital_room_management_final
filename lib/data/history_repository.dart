@@ -10,14 +10,12 @@ class HistoryRepository {
     try {
       final file = File(filePath);
       if (!await file.exists()) {
-        // Create initial structure if file doesn't exist
         await file.writeAsString(jsonEncode({'patientHistory': []}));
         return [];
       }
 
       final jsonString = await file.readAsString();
       if (jsonString.trim().isEmpty) {
-        // Handle empty file by initializing with empty structure
         await file.writeAsString(jsonEncode({'patientHistory': []}));
         return [];
       }
@@ -26,13 +24,11 @@ class HistoryRepository {
       final patientHistory = data['patientHistory'] as List?;
 
       if (patientHistory == null) {
-        // Handle missing patientHistory field
         return [];
       }
 
       return List<Map<String, dynamic>>.from(patientHistory);
     } catch (e) {
-      // If there's any error, recreate the file with proper structure
       final file = File(filePath);
       await file.writeAsString(jsonEncode({'patientHistory': []}));
       return [];
@@ -45,7 +41,6 @@ class HistoryRepository {
       final file = File(filePath);
       await file.writeAsString(jsonString);
     } catch (e) {
-      // Handle save errors
       rethrow;
     }
   }
@@ -56,7 +51,6 @@ class HistoryRepository {
       history.add(record);
       await saveHistory(history);
     } catch (e) {
-      // Handle add record errors
       rethrow;
     }
   }

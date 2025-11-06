@@ -1,3 +1,4 @@
+// AI generated
 import 'dart:io';
 
 String _esc(String code) => '\x1B[$code';
