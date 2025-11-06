@@ -6,5 +6,4 @@ Menu-driven CLI with management actions and JSON persistence.
 ```bash
 dart pub get
 dart test
-dart run
 ```
