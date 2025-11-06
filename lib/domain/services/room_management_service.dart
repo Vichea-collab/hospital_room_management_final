@@ -147,6 +147,11 @@ class RoomManagementService {
   // =========================================================
   void markRoomUnderMaintenance(Room room, String reason, Staff? by) {
     room.status = RoomStatus.maintenance;
+    for (final bed in room.beds) {
+      if (bed.status != BedStatus.occupied) {
+        bed.status = BedStatus.closed;
+      }
+    }
 
     _maintenance.add(MaintenanceRecord(
       recordID: 'M-${DateTime.now().millisecondsSinceEpoch}',

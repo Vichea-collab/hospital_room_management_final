@@ -200,6 +200,12 @@ class MainMenu {
       final name = _askStr('Name');
       final desc = _askStr('Description');
       final dept = Department(departmentID: id, name: name, description: desc);
+      if (!ui.confirm(
+          'Add department "${dept.name}" (ID: ${dept.departmentID})?')) {
+        _info('Department creation canceled.');
+        _pause();
+        return;
+      }
       service.addDepartment(dept);
       await service.save();
       _ok('Department added successfully.');
@@ -246,6 +252,13 @@ class MainMenu {
         beds: beds,
       );
 
+      if (!ui.confirm(
+          'Add room ${room.roomNumber} (ID: ${room.roomID}) to department $deptId?')) {
+        _info('Room creation canceled.');
+        _pause();
+        return;
+      }
+
       try {
         service.addRoom(room, departmentID: deptId);
         await service.save();
@@ -280,6 +293,12 @@ class MainMenu {
       final phone = _askStr('Phone Number');
       final staff =
           Staff(staffID: staffID, name: name, role: role, phoneNumber: phone);
+      if (!ui.confirm(
+          'Add staff ${staff.name} (${staff.staffID}) to department $deptId?')) {
+        _info('Staff creation canceled.');
+        _pause();
+        return;
+      }
       try {
         service.addStaff(staff, departmentID: deptId);
         await service.save();
@@ -305,6 +324,12 @@ class MainMenu {
     }
     if (room == null) {
       _error('Room not found');
+      _pause();
+      return;
+    }
+    if (!ui.confirm(
+        'Assign ${staff.name} to room ${room.roomNumber} (ID: ${room.roomID})?')) {
+      _info('Staff assignment canceled.');
       _pause();
       return;
     }
@@ -383,6 +408,12 @@ class MainMenu {
         dateOfBirth: dob,
         phoneNumber: phone);
 
+    if (!ui.confirm('Assign patient $first $last to bed ${chosenBed.bedID}?')) {
+      _info('Patient assignment canceled.');
+      _pause();
+      return;
+    }
+
     try {
       await service.assignPatientToBed(patient, chosenBed, DateTime.now());
       await service.save();
@@ -438,6 +469,12 @@ class MainMenu {
     }
     final chosen = occupiedBeds[sel - 1];
 
+    if (!ui.confirm('Release bed ${chosen.bedID}?')) {
+      _info('Bed release canceled.');
+      _pause();
+      return;
+    }
+
     await service.releaseBed(chosen, DateTime.now());
     await service.save();
     _ok('Bed released: ${chosen.bedID}');
@@ -453,6 +490,12 @@ class MainMenu {
     final room = _findRoomById(roomID);
     if (room == null) {
       _error('Room not found');
+      _pause();
+      return;
+    }
+    if (!ui.confirm(
+        'Mark room ${room.roomNumber} (ID: ${room.roomID}) under maintenance for "$reason"?')) {
+      _info('Maintenance update canceled.');
       _pause();
       return;
     }
@@ -476,6 +519,13 @@ class MainMenu {
     // Check if room is in a state that can be cleaned
     if (room.status == RoomStatus.occupied) {
       _error('Cannot clean room while it is occupied');
+      _pause();
+      return;
+    }
+
+    if (!ui.confirm(
+        'Mark room ${room.roomNumber} (ID: ${room.roomID}) as cleaned?')) {
+      _info('Cleaning update canceled.');
       _pause();
       return;
     }
@@ -506,6 +556,12 @@ class MainMenu {
       _pause();
       return;
     }
+    if (!ui.confirm(
+        'Mark room ${room.roomNumber} (ID: ${room.roomID}) as available?')) {
+      _info('Availability update canceled.');
+      _pause();
+      return;
+    }
     service.markRoomAvailable(room);
     await service.save();
     _ok('Room marked as available');
@@ -518,6 +574,12 @@ class MainMenu {
     final room = _findRoomById(roomID);
     if (room == null) {
       _error('Room not found');
+      _pause();
+      return;
+    }
+    if (!ui.confirm(
+        'Mark room ${room.roomNumber} (ID: ${room.roomID}) as closed?')) {
+      _info('Closure update canceled.');
       _pause();
       return;
     }
@@ -548,9 +610,41 @@ class MainMenu {
       return;
     }
     for (final b in beds) {
-      stdout
-          .writeln('Bed ${b.bedID}/${b.bedNumber}  ${_stateBadgeBed(b.status)}'
-              '  Patient: ${b.currentPatient?.getFullName() ?? '-'}');
+      Department? dept;
+      Room? room;
+      outer:
+      for (final d in service.departments) {
+        for (final r in d.rooms) {
+          if (r.beds.any((bed) => bed.bedID == b.bedID)) {
+            dept = d;
+            room = r;
+            break outer;
+          }
+        }
+      }
+
+      final patient = b.currentPatient;
+      final deptLabel = dept == null
+          ? '-'
+          : '${dept.name} (ID: ${dept.departmentID})';
+      final roomLabel = room == null
+          ? '-'
+          : '${room.roomNumber} (ID: ${room.roomID}) · Floor ${room.floorLevel} · ${room.type.name}';
+
+      stdout.writeln(
+          'Bed ${b.bedID}/${b.bedNumber}  ${_stateBadgeBed(b.status)}');
+      stdout.writeln('  Dept: $deptLabel');
+      stdout.writeln('  Room: $roomLabel');
+      if (patient != null) {
+        stdout.writeln(
+            '  Patient: ${patient.getFullName()} (${patient.patientID})');
+        stdout.writeln(
+            '  Gender: ${patient.gender}  Phone: ${patient.phoneNumber}');
+      } else {
+        stdout.writeln('  Patient: -');
+      }
+      stdout.writeln('  Admitted: ${_formatDateTime(b.enterDate)}');
+      stdout.writeln('');
     }
   }
 
@@ -588,6 +682,7 @@ class MainMenu {
 
   void _ok(String msg) => stdout.writeln(ui.green(msg));
   void _error(String msg) => stdout.writeln(ui.red(msg));
+  void _info(String msg) => stdout.writeln(ui.yellow(msg));
 
   void _pause() {
     stdout.writeln('');
@@ -660,6 +755,15 @@ class MainMenu {
     }
     return null;
   }
+
+  String _formatDateTime(DateTime? dt) {
+    if (dt == null) return '-';
+    final local = dt.toLocal();
+    return '${local.year}-${_two(local.month)}-${_two(local.day)} '
+        '${_two(local.hour)}:${_two(local.minute)}';
+  }
+
+  String _two(int n) => n.toString().padLeft(2, '0');
 
   void _viewDepartmentById() {
     _section('Search Department');
@@ -754,8 +858,6 @@ class MainMenu {
         return ui.green('[Available]');
       case BedStatus.occupied:
         return ui.red('[Occupied]');
-      case BedStatus.reserved:
-        return ui.yellow('[Reserved]');
       case BedStatus.cleaning:
         return ui.blue('[Cleaning]');
       case BedStatus.closed:
@@ -785,6 +887,17 @@ class MainMenu {
         stdout.writeln('      Type: ${room.type.name}');
         stdout.writeln('      Status: ${room.status.name}');
         stdout.writeln('      Capacity: ${room.capacity}');
+        final maintenanceReason = room.maintenanceReason?.trim();
+        if (maintenanceReason != null && maintenanceReason.isNotEmpty) {
+          stdout.writeln('      Maintenance Reason: $maintenanceReason');
+          final staffId = room.maintenanceStaffId?.trim();
+          stdout.writeln(
+              '      Maintenance Staff ID: ${staffId != null && staffId.isNotEmpty ? staffId : '-'}');
+          if (room.maintenanceLoggedAt != null) {
+            stdout.writeln(
+                '      Maintenance Logged: ${room.maintenanceLoggedAt!.toLocal()}');
+          }
+        }
 
         // Beds
         stdout.writeln('      ${ui.cyan('Beds:')}');
