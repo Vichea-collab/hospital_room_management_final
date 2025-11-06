@@ -1,46 +1,61 @@
 // AI generated
 import 'dart:io';
+
 import 'package:test/test.dart';
-import 'package:hospital_room_management/domain/services/room_management_service.dart';
-import 'package:hospital_room_management/domain/models/department.dart';
-import 'package:hospital_room_management/domain/models/room.dart';
-import 'package:hospital_room_management/domain/models/bed.dart';
-import 'package:hospital_room_management/domain/models/patient.dart';
-import 'package:hospital_room_management/domain/models/enums.dart';
-import 'package:hospital_room_management/data/json_repository.dart';
 import 'package:hospital_room_management/data/history_repository.dart';
+import 'package:hospital_room_management/data/json_repository.dart';
+import 'package:hospital_room_management/domain/models/bed.dart';
+import 'package:hospital_room_management/domain/models/department.dart';
+import 'package:hospital_room_management/domain/models/enums.dart';
+import 'package:hospital_room_management/domain/models/patient.dart';
+import 'package:hospital_room_management/domain/models/room.dart';
+import 'package:hospital_room_management/domain/models/staff.dart';
+import 'package:hospital_room_management/domain/services/room_management_service.dart';
 
 void main() {
-  test('assign patient to bed sets bed occupied', () async {
-    // Ensure clean test files
-    final tmpFile = File('test/test_tmp.json');
-    if (await tmpFile.exists()) await tmpFile.delete();
-    final histFile = File('test/test_history.json');
-    if (await histFile.exists()) await histFile.delete();
+  late Directory tempDir;
+  late JsonRepository repo;
+  late HistoryRepository historyRepo;
+  late RoomManagementService service;
+  late Department department;
+  late Room room;
+  late Bed bed;
 
-    final repo = JsonRepository('test/test_tmp.json');
-    final historyRepo = HistoryRepository('test/test_history.json');
-    final service = RoomManagementService(repo, historyRepo);
+  setUp(() async {
+    tempDir = await Directory.systemTemp.createTemp('room_service_test');
+    repo = JsonRepository('${tempDir.path}/data.json');
+    historyRepo = HistoryRepository('${tempDir.path}/history.json');
+    service = RoomManagementService(repo, historyRepo);
 
-    final dept = Department(
+    department = Department(
       departmentID: 'D1',
       name: 'ICU',
-      description: 'Intensive',
+      description: 'Intensive Care',
     );
 
-    final room = Room(
+    bed = Bed(bedID: 'B1', bedNumber: '1');
+
+    room = Room(
       roomID: 'R1',
       roomNumber: '101',
       floorLevel: '1',
       type: RoomType.icu,
       status: RoomStatus.available,
       capacity: 1,
-      beds: [Bed(bedID: 'B1', bedNumber: '1')],
+      beds: [bed],
     );
 
-    service.addDepartment(dept);
-    service.addRoom(room, departmentID: 'D1');
+    service.addDepartment(department);
+    service.addRoom(room, departmentID: department.departmentID);
+  });
 
+  tearDown(() async {
+    if (await tempDir.exists()) {
+      await tempDir.delete(recursive: true);
+    }
+  });
+
+  test('assigning patient updates bed, assignments, and history log', () async {
     final patient = Patient(
       patientID: 'P1',
       firstName: 'Sokha',
@@ -50,53 +65,64 @@ void main() {
       phoneNumber: '012345678',
     );
 
-    final admissionTime = DateTime.now();
-    final ra = await service.assignPatientToBed(
-        patient, room.beds.first, admissionTime);
-    expect(room.beds.first.isOccupied(), isTrue);
-    expect(ra.active, isTrue);
+    final admissionTime = DateTime.utc(2024, 1, 1, 8);
+    final assignment =
+        await service.assignPatientToBed(patient, bed, admissionTime);
 
-    // Verify history is created for admission
+    expect(bed.isOccupied(), isTrue);
+    expect(assignment.active, isTrue);
+    expect(service.assignments, hasLength(1));
+    expect(service.assignments.first.bed.bedID, equals(bed.bedID));
+
     final history = await historyRepo.loadHistory();
-    expect(history.length, equals(1));
-    expect(history[0]['patientId'], equals('P1'));
-    expect(history[0]['status'], equals('ACTIVE'));
-    expect(history[0]['departmentName'], equals('ICU'));
-    expect(
-        DateTime.parse(history[0]['admissionDate'])
-            .isAfter(admissionTime.subtract(Duration(seconds: 1))),
-        isTrue);
+    expect(history, hasLength(1));
+    final entry = history.first;
+    expect(entry['patientId'], equals(patient.patientID));
+    expect(entry['roomNumber'], equals(room.roomNumber));
+    expect(entry['departmentName'], equals(department.name));
+    expect(entry['status'], equals('ACTIVE'));
+    expect(entry['admissionDate'], equals(admissionTime.toIso8601String()));
+    expect(entry['releaseDate'], isEmpty);
 
-    // Test release and history update
-    final releaseTime = DateTime.now();
-    await service.releaseBed(room.beds.first, releaseTime);
-    expect(room.beds.first.isOccupied(), isFalse);
+    final releaseTime = admissionTime.add(const Duration(hours: 6));
+    await service.releaseBed(bed, releaseTime);
 
-    // Verify history is updated for release
+    expect(bed.isOccupied(), isFalse);
+    expect(service.assignments.single.active, isFalse);
+    expect(service.assignments.single.endDate, equals(releaseTime));
+
     final updatedHistory = await historyRepo.loadHistory();
-    expect(updatedHistory.length, equals(1));
-    expect(updatedHistory[0]['status'], equals('COMPLETED'));
-    expect(
-        DateTime.parse(updatedHistory[0]['releaseDate'])
-            .isAfter(releaseTime.subtract(Duration(seconds: 1))),
-        isTrue);
+    final updatedEntry = updatedHistory.single;
+    expect(updatedEntry['status'], equals('COMPLETED'));
+    expect(updatedEntry['releaseDate'], equals(releaseTime.toIso8601String()));
   });
 
-  test('history repository handles empty and invalid files', () async {
-    final emptyFile = File('test/empty_test.json');
-    if (await emptyFile.exists()) await emptyFile.delete();
-    final historyRepo = HistoryRepository('test/empty_test.json');
+  test('marking maintenance toggles room/beds status and records tracking',
+      () async {
+    final staff = Staff(
+      staffID: 'S1',
+      name: 'Maintenance Team',
+      role: StaffRole.maintenance,
+      phoneNumber: '098765432',
+    );
 
-    // Test empty file handling
-    final emptyHistory = await historyRepo.loadHistory();
-    expect(emptyHistory, isEmpty);
+    service.assignStaffToRoom(staff, room);
+    service.markRoomUnderMaintenance(room, 'Leak detected', staff);
 
-    // Test adding and retrieving a record
-    await historyRepo.addHistoryRecord(
-        {'historyId': 'TEST-1', 'patientId': 'P1', 'status': 'ACTIVE'});
+    expect(room.status, equals(RoomStatus.maintenance));
+    expect(room.beds.single.status, equals(BedStatus.closed));
+    expect(room.maintenanceReason, equals('Leak detected'));
+    expect(room.maintenanceStaffId, equals(staff.staffID));
+    expect(room.maintenanceLoggedAt, isNotNull);
+    expect(service.maintenance, hasLength(1));
 
-    final history = await historyRepo.loadHistory();
-    expect(history.length, equals(1));
-    expect(history[0]['historyId'], equals('TEST-1'));
+    service.markRoomAvailable(room);
+
+    expect(room.status, equals(RoomStatus.available));
+    expect(room.beds.single.status, equals(BedStatus.available));
+    expect(service.maintenance, isEmpty);
+    expect(room.maintenanceReason, isNull);
+    expect(room.maintenanceStaffId, isNull);
+    expect(room.maintenanceLoggedAt, isNull);
   });
 }

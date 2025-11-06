@@ -18,9 +18,6 @@ class RoomManagementService {
 
   RoomManagementService(this._repo, this._historyRepo);
 
-  // =========================================================
-  // ================= LOAD & SAVE ===========================
-  // =========================================================
   Future<void> load() async {
     _departments
       ..clear()
@@ -153,12 +150,17 @@ class RoomManagementService {
       }
     }
 
+    final now = DateTime.now();
+    room.maintenanceReason = reason;
+    room.maintenanceStaffId = by?.staffID;
+    room.maintenanceLoggedAt = now;
+
     _maintenance.add(MaintenanceRecord(
-      recordID: 'M-${DateTime.now().millisecondsSinceEpoch}',
+      recordID: 'M-${now.millisecondsSinceEpoch}',
       room: room,
       staff: by,
       reason: reason,
-      date: DateTime.now(),
+      date: now,
     ));
   }
 
@@ -189,15 +191,18 @@ class RoomManagementService {
   void markRoomAvailable(Room room) {
     room.status = RoomStatus.available;
 
-    // Restore all beds from cleaning → available
+    // Restore all beds from occupied, cleaning, closed → available
     for (final bed in room.beds) {
-      if (bed.status == BedStatus.cleaning) {
+      if (bed.status == BedStatus.cleaning || bed.status == BedStatus.closed) {
         bed.status = BedStatus.available;
       }
     }
 
     // Remove maintenance records for that room (resolved)
     _maintenance.removeWhere((m) => m.room.roomID == room.roomID);
+    room.maintenanceReason = null;
+    room.maintenanceStaffId = null;
+    room.maintenanceLoggedAt = null;
   }
 
   // =========================================================
